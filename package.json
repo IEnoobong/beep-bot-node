@@ -1,0 +1,18 @@
+{
+  "name": "beep-beep-bot",
+  "version": "1.0.0",
+  "description": "Simple bot that provides weather and news information",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["bot", "telegram", "indorse", "beep"],
+  "author": "Ibanga Enoobong Ime",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "0.18.0",
+    "body-parser": "1.18.3",
+    "express": "4.16.4"
+  }
+}
