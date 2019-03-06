@@ -1,8 +1,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const axios = require('axios');
-const {google, openWeather, telegram} = require("./apiKey");
-
+const {telegram} = require("./apiKey");
+const {telegramBaseUrl, buildGeocodeUrl, buildWeatherUrl} = require('./config');
+const {makePostRequest, makeGetRequest} = require('./network');
 const app = express();
 
 app.use(bodyParser.json());
@@ -11,18 +11,20 @@ app.use(bodyParser.urlencoded({
 }));
 
 const users = [];
-const telegramUrl = 'https://api.telegram.org/bot';
 
 app.get('/', (req, res) => {
     const hostUrl = req.get('host');
-    axios.post(`${telegramUrl}${telegram}/setWebhook`, {url: `https://${hostUrl}/${telegram}/new-message`})
+    makePostRequest(`${telegramBaseUrl}/setWebhook`, {url: `https://${hostUrl}/${telegram}/new-message`})
         .then(() => {
             return res.end('ok');
         }).catch(reason => {
-        console.log(reason.message);
-        return res.end('ok');
+        return res.end(reason.message);
     });
 });
+
+const validateLocation = userLocation => makeGetRequest(buildGeocodeUrl(userLocation));
+
+const getWeatherInfo = location => makeGetRequest(buildWeatherUrl(location));
 
 app.post(`/${telegram}/new-message`, (req, res) => {
     console.log(`Body is ${JSON.stringify(req.body)}`);
@@ -37,19 +39,10 @@ app.post(`/${telegram}/new-message`, (req, res) => {
     // handle start
     const myNameIs = 'My name is ';
     if (messageText.indexOf('/start') === 0) {
-        const reply = {
-            chat_id: message.chat.id,
-            text: `Hey there, what's your name?\n_Begin response with_ ${myNameIs}`,
-            parse_mode: `markdown`
-        };
-        sendReply(reply)
-            .then(() => {
-                return res.end('ok');
-            }).catch(reason => {
-            return res.end(reason.message);
-        });
+        return requestUserName(message.chat.id, myNameIs, res);
     }
 
+    // handle name
     const myLocationIs = 'My location is ';
     if (messageText.toLocaleLowerCase().startsWith(myNameIs.toLocaleLowerCase())) {
         const chosenName = messageText.substring(myNameIs.length);
@@ -67,7 +60,7 @@ app.post(`/${telegram}/new-message`, (req, res) => {
         sendReply(reply).then(() => {
             reply.text = `What's your present location?\n_Begin response with_ ${myLocationIs}`;
             sendReply(reply).then(() => {
-                return res.end();
+                return res.end('ok');
             }).catch(reason => {
                 return res.end(reason.message);
             });
@@ -76,21 +69,64 @@ app.post(`/${telegram}/new-message`, (req, res) => {
         });
     }
 
+    // handle location
     if (messageText.toLocaleLowerCase().startsWith(myLocationIs.toLocaleLowerCase())) {
         const userLocation = messageText.substring(myLocationIs.length);
-        console.log('Location is ', userLocation);
         const user = users.find(user => user.id === message.from.id);
         if (user) {
             user['location'] = userLocation;
+            validateLocation(userLocation).then(value => {
+                if (value.data.status === 'ZERO_RESULTS') {
+                    throw new Error('Unable to find that address');
+                }
+                const addressComponents = value.data.results[0].address_components;
+                if (addressComponents.length >= 2) {
+                    user['countryCode'] = addressComponents.pop().short_name;
+                    user['apiLocation'] = addressComponents.pop().long_name;
+                }
+                const location = user.apiLocation || user.location;
+                return getWeatherInfo(location)
+            }).then(value => {
+                const reply = {
+                    chat_id: message.chat.id,
+                    text: JSON.stringify(value.data.main)
+                };
+                return sendReply(reply);
+            }).then(() => {
+                return res.end('ok')
+            }).catch(reason => {
+                const reply = {
+                    chat_id: message.chat.id,
+                    text: reason.message
+                };
+                sendReply(reply).finally(() => {
+                    return res.end(`ok`)
+                })
+            })
         } else {
-            //Request for name
+            return requestUserName(message.chat.id, myNameIs, res)
         }
         console.log('Users are ', users);
     }
+    res.end();
 });
 
+const requestUserName = (chatId, myNameIs, res) => {
+    const reply = {
+        chat_id: chatId,
+        text: `Hey there, what's your name?\n_Begin response with_ ${myNameIs}`,
+        parse_mode: `markdown`
+    };
+    sendReply(reply)
+        .then(() => {
+            return res.end('ok');
+        }).catch(reason => {
+        return res.end(reason.message);
+    });
+};
+
 const sendReply = message => {
-    return axios.post(`${telegramUrl}${telegram}/sendMessage`, message);
+    return makePostRequest(`${telegramBaseUrl}/sendMessage`, message);
 };
 
 const port = process.env.PORT || 3000;
