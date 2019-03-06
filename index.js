@@ -29,22 +29,17 @@ const getWeatherInfo = location => makeGetRequest(buildWeatherUrl(location));
 app.post(`/${telegram}/new-message`, (req, res) => {
     console.log(`Body is ${JSON.stringify(req.body)}`);
     const {message} = req.body;
+    const messageText = message.text;
+    const myNameIs = 'My name is ';
+    const myLocationIs = 'My location is ';
 
     if (!message) {
         return res.end()
-    }
-
-    let messageText = message.text;
-
-    // handle start
-    const myNameIs = 'My name is ';
-    if (messageText.indexOf('/start') === 0) {
+    } else if (messageText.indexOf('/start') === 0) {
+        // handle start
         return requestUserName(message.chat.id, myNameIs, res);
-    }
-
-    // handle name
-    const myLocationIs = 'My location is ';
-    if (messageText.toLocaleLowerCase().startsWith(myNameIs.toLocaleLowerCase())) {
+    } else if (messageText.toLocaleLowerCase().startsWith(myNameIs.toLocaleLowerCase())) {
+        // handle name
         const chosenName = messageText.substring(myNameIs.length);
         const user = {
             name: chosenName,
@@ -67,10 +62,8 @@ app.post(`/${telegram}/new-message`, (req, res) => {
         }).catch(reason => {
             return res.end(reason.message);
         });
-    }
-
-    // handle location
-    if (messageText.toLocaleLowerCase().startsWith(myLocationIs.toLocaleLowerCase())) {
+    } else if (messageText.toLocaleLowerCase().startsWith(myLocationIs.toLocaleLowerCase())) {
+        // handle location
         const userLocation = messageText.substring(myLocationIs.length);
         const user = users.find(user => user.id === message.from.id);
         if (user) {
@@ -107,8 +100,9 @@ app.post(`/${telegram}/new-message`, (req, res) => {
             return requestUserName(message.chat.id, myNameIs, res)
         }
         console.log('Users are ', users);
+    } else {
+        res.end();
     }
-    res.end();
 });
 
 const requestUserName = (chatId, myNameIs, res) => {
